@@ -1,0 +1,7 @@
+# Pin versions with `pip freeze` once the pipelines run
+hopsworks
+pandas
+scikit-learn
+joblib
+requests
+python-dotenv
