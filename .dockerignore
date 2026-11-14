@@ -1,0 +1,8 @@
+.env
+.venv
+.git
+course-data
+model
+__pycache__
+.DS_Store
+output

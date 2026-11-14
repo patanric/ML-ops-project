@@ -1,0 +1,28 @@
+# Production-like setup: the feature pipeline runs on a schedule, inference runs on demand in a web app.
+# Both only talk to each other through the Hopsworks feature store.
+#   docker compose up --build     then open http://localhost:8000
+services:
+  features:
+    build: .
+    image: rain-pipelines
+    env_file: .env
+    # First run immediately, then at minute 1 of every hour: the newest hour appears in the
+    # Open-Meteo data once the clock passes the full hour (feature_pipeline.py keeps time <= now).
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          python feature_pipeline.py || echo "feature pipeline failed, retrying next hour"
+          sleep $$(( (3660 - $$(date +%s) % 3600) % 3600 + 1 ))
+        done
+    restart: unless-stopped
+
+  web:
+    build: .
+    image: rain-pipelines
+    env_file: .env
+    command: ["serve.py"]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
