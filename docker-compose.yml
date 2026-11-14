@@ -25,4 +25,6 @@ services:
     command: ["serve.py"]
     ports:
       - "8000:8000"
+    volumes:
+      - ./output:/app/output   # where `docker compose run --rm web inference_pipeline.py` writes predictions.html
     restart: unless-stopped

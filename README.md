@@ -35,62 +35,44 @@ Model registry: Hopsworks, model name `rain_model`. Inference loads the version 
 All timestamps are UTC.
 
 ## Setup
-Requires Python 3.12 (Hopsworks needs <3.14) and a free account on [hopsworks.ai](https://www.hopsworks.ai/)
+Requirements: [Docker](https://www.docker.com/) with Docker Compose, and a free account on [hopsworks.ai](https://www.hopsworks.ai/)
 with **one project** (the client selects it automatically) and an API key.
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 cp .env.example .env   # then set HOPSWORKS_API_KEY
 ```
-`requirements.txt` uses `hopsworks[python]`: plain `hopsworks` lacks pyarrow, which the Python client needs to read and write features.
+
+Dependencies are pinned in `requirements.txt` and installed into the image by the `Dockerfile`
+(Python 3.12.14, Hopsworks needs Python < 3.14). `hopsworks[python]` is needed instead of plain `hopsworks`,
+which lacks pyarrow for reading and writing features.
+The image is built for `linux/amd64`, because `hops-deltalake` (required by `hopsworks[python]`) has no Linux ARM wheel.
+On Apple Silicon Docker Desktop runs it under emulation, which works but is slower.
 
 ## Run
 ```bash
-python feature_pipeline.py --backfill   # once: ~2 years of history
-python feature_pipeline.py              # regularly: last 7 days (upsert)
-python training_pipeline.py
-python inference_pipeline.py
-open output/predictions.html            # macOS; or open the file in any browser
+docker compose run --rm web feature_pipeline.py --backfill   # once: ~2 years of history into the feature store
+docker compose run --rm web training_pipeline.py             # train, evaluate, register the model
+docker compose up --build -d                                 # start the two services below
 ```
-
-`output/predictions.html` is a static page (no server needed, light and dark mode): the current 2 hour forecast with
-rain probability on top, then hit rate, caught rain hours and false alarms, a timeline of the model's rain probability
-against the hours where rain actually fell, and an hour by hour grid where a cross marks every wrong prediction.
-The newest hour uses the live `cloud_cover`; older hours use the stored features. The last 2 hours show as "not known yet"
-until the next feature pipeline run fills in their label. Times on the page are shown in Europe/Zurich.
-
-## Run with Docker (alternative, no local Python needed)
-Avoids the Python version requirement (Hopsworks does not support Python 3.14 yet). Only `.env` with the API key is needed.
-
-```bash
-docker build -t rain-pipelines .
-docker run --rm --env-file .env rain-pipelines feature_pipeline.py --backfill   # once
-docker run --rm --env-file .env rain-pipelines feature_pipeline.py
-docker run --rm --env-file .env rain-pipelines training_pipeline.py
-docker run --rm --env-file .env -v "$PWD/output:/app/output" rain-pipelines    # inference (default), writes output/predictions.html
-```
-
-The image is built for `linux/amd64`: `hops-deltalake` (required by `hopsworks[python]`) has no Linux ARM wheel.
-On Apple Silicon Docker Desktop runs it under emulation, which works but is slower.
-
-## Production-like setup (Docker Compose)
-Runs the feature pipeline on a schedule and the inference as a web app, the two only connected through the feature store:
-
-```bash
-docker compose up --build -d     # then open http://localhost:8000
-docker compose logs -f           # follow both services
-docker compose down              # stop
-```
+Then open http://localhost:8000. `docker compose logs -f` follows both services, `docker compose down` stops them.
 
 | Service | What it does |
 |---|---|
 | `features` | Runs `feature_pipeline.py` immediately at start, then at minute 1 of every hour. Open-Meteo delivers hourly values and the pipeline keeps rows up to the current time, so a new hour is available right after the full hour; running more often would only rewrite the same hours. |
 | `web` | `serve.py`: logs in and loads the best model once, then every page load or click on "Refresh prediction" runs a fresh inference (live `cloud_cover` + newest features) and returns the predictions page. |
 
-Training stays a manual step (`docker run --rm --env-file .env rain-pipelines training_pipeline.py`). The web app keeps
-the model it loaded at start, so restart it (`docker compose restart web`) after training a better one.
+The feature pipeline and the inference only meet in the feature store: each runs on its own schedule
+(features hourly, inference on request). Training stays a manual step; the web app keeps the model it loaded
+at start, so restart it (`docker compose restart web`) after training a better one.
+
+`docker compose run --rm web <script>` runs any of the scripts once, for example
+`docker compose run --rm web inference_pipeline.py` writes the same page as a static file to `output/predictions.html`.
+
+**The predictions page** (light and dark mode): the current 2 hour forecast with rain probability on top,
+then hit rate, caught rain hours and false alarms, a timeline of the model's rain probability against the hours
+where rain actually fell, and an hour by hour grid where a cross marks every wrong prediction.
+The newest hour uses the live `cloud_cover`; older hours use the stored features. The last 2 hours show as "not known yet"
+until the next feature pipeline run fills in their label. Times on the page are shown in Europe/Zurich.
 
 ## Results (run on 2026-11-11, page on 2026-11-12)
 - Backfill: 24,937 hourly rows (2024-01-01 to 2026-11-05), rain share 25.7%
@@ -106,8 +88,12 @@ the model it loaded at start, so restart it (`docker compose restart web`) after
   the same column comes from the hourly data, so the two values are close but not produced identically.
 - **Labels and features in one feature group:** the newest 2 hours are stored without a label and completed later
   by upsert. A cleaner design would separate labels into their own feature group (spine group, point-in-time join).
-- **No scheduling:** the pipelines are run by hand. In production the feature pipeline would run hourly
-  (cron, GitHub Actions or Airflow), training occasionally, inference on demand.
+- **Simple scheduling:** the hourly feature run is a sleep loop in a container, so it only runs while Docker runs
+  on this machine. In production a scheduler would trigger it (cron, GitHub Actions, Airflow or a Hopsworks job).
+  Training is still started by hand.
+- **Online inference from the offline store:** the web app predicts on request (online prediction), but reads the
+  features from the offline feature group. A request took about 3.6 s in our test (Apple Silicon, amd64 emulation).
+  For low latency the feature group would be `online_enabled` so the newest features come from the online store.
 - **Model choice:** inference uses the registered version with the best F1 (`get_best_model`). Hopsworks has
   no alias mechanism like MLflow's `champion` in the course.
 - **One location only** (Zurich); predictions only go to the local HTML page, they are not written back to the feature store,
