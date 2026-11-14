@@ -5,6 +5,7 @@ services:
   features:
     build: .
     image: rain-pipelines
+    platform: linux/amd64   # same as the Dockerfile, hops-deltalake has no Linux ARM wheel
     env_file: .env
     # First run immediately, then at minute 1 of every hour: the newest hour appears in the
     # Open-Meteo data once the clock passes the full hour (feature_pipeline.py keeps time <= now).
@@ -21,6 +22,7 @@ services:
   web:
     build: .
     image: rain-pipelines
+    platform: linux/amd64   # same as the Dockerfile, hops-deltalake has no Linux ARM wheel
     env_file: .env
     command: ["serve.py"]
     ports:

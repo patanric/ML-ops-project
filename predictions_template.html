@@ -9,46 +9,29 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* every colour holds its light and dark value; data-theme on <html> overrides the system setting */
   :root {
-    color-scheme: light;
-    --bg: #f5f6f8;
-    --card: #ffffff;
-    --border: #e3e6ea;
-    --text: #0f1720;
-    --text-2: #4a5361;
-    --muted: #747d8c;
-    --rain: #2a78d6;
-    --rain-top: #5c9de8;
-    --band: rgb(42 120 214 / 0.14);
-    --band-pending: rgb(116 125 140 / 0.14);
-    --dry: #e8ebef;
-    --miss: #e34948;
-    --grid: #e3e6ea;
-    --hero-dry: linear-gradient(135deg, #e3eefb 0%, #f7f4ec 100%);
-    --cloud-dry: #a9b8c9;
-    --shadow: 0 1px 2px rgb(15 23 32 / 0.04), 0 8px 24px rgb(15 23 32 / 0.06);
+    color-scheme: light dark;
+    --bg: light-dark(#f5f6f8, #101214);
+    --card: light-dark(#ffffff, #191b1e);
+    --border: light-dark(#e3e6ea, #2a2d32);
+    --text: light-dark(#0f1720, #eef0f3);
+    --text-2: light-dark(#4a5361, #b8bfca);
+    --muted: light-dark(#747d8c, #868e9a);
+    --rain: light-dark(#2a78d6, #3987e5);
+    --rain-top: light-dark(#5c9de8, #62a3ef);
+    --band: light-dark(rgb(42 120 214 / 0.14), rgb(57 135 229 / 0.22));
+    --band-pending: light-dark(rgb(116 125 140 / 0.14), rgb(134 142 154 / 0.16));
+    --dry: light-dark(#e8ebef, #2a2d32);
+    --miss: light-dark(#e34948, #e66767);
+    --grid: light-dark(#e3e6ea, #2a2d32);
+    --hero-dry: linear-gradient(135deg, light-dark(#e3eefb, #1a2533) 0%, light-dark(#f7f4ec, #1d2025) 100%);
+    --cloud-dry: light-dark(#a9b8c9, #6c7a8c);
+    --shadow: 0 1px 2px light-dark(rgb(15 23 32 / 0.04), rgb(0 0 0 / 0.3)),
+              0 8px 24px light-dark(rgb(15 23 32 / 0.06), rgb(0 0 0 / 0.25));
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --bg: #101214;
-      --card: #191b1e;
-      --border: #2a2d32;
-      --text: #eef0f3;
-      --text-2: #b8bfca;
-      --muted: #868e9a;
-      --rain: #3987e5;
-      --rain-top: #62a3ef;
-      --band: rgb(57 135 229 / 0.22);
-      --band-pending: rgb(134 142 154 / 0.16);
-      --dry: #2a2d32;
-      --miss: #e66767;
-      --grid: #2a2d32;
-      --hero-dry: linear-gradient(135deg, #1a2533 0%, #1d2025 100%);
-      --cloud-dry: #6c7a8c;
-      --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
-    }
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
@@ -71,6 +54,11 @@
   }
   .refresh:hover { filter: brightness(1.08); }
   .refresh:disabled { opacity: 0.6; cursor: progress; }
+  .theme {
+    display: grid; place-items: center; width: 32px; height: 30px; padding: 0; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--text-2);
+  }
+  .theme:hover { color: var(--text); }
   .pill .live { width: 8px; height: 8px; border-radius: 50%; background: #1baf7a; box-shadow: 0 0 0 3px rgb(27 175 122 / 0.2); }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
   section.card { padding: 20px; margin-top: 16px; }
@@ -97,9 +85,11 @@
   .hero .when { font-size: 13px; font-weight: 500; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.06em; }
   .hero .big { font-size: 38px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 6px 0 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { padding: 4px 10px; border-radius: 999px; font-size: 13px; background: rgb(255 255 255 / 0.55); color: var(--text-2); }
+  .chip {
+    padding: 4px 10px; border-radius: 999px; font-size: 13px; color: var(--text-2);
+    background: light-dark(rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.07));
+  }
   .hero.rain .chip { background: rgb(255 255 255 / 0.14); color: #f3f7fb; }
-  @media (prefers-color-scheme: dark) { .chip { background: rgb(255 255 255 / 0.07); } }
   .ring { position: relative; width: 112px; height: 112px; }
   .ring svg { transform: rotate(-90deg); }
   .ring .track { stroke: currentColor; opacity: 0.14; }
@@ -196,6 +186,9 @@
     .cell, .ring .bar { transition: none; }
   }
 </style>
+<script>
+  try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 </head>
 <body>
 <main>
@@ -207,6 +200,12 @@
     <div class="actions">
       <div class="pill"><i class="live"></i><span id="updated"></span></div>
       <button class="refresh" id="refresh" hidden>Refresh prediction</button>
+      <button class="theme" id="theme" type="button">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 1.75a6.25 6.25 0 0 0 0 12.5z" fill="currentColor"/>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -296,6 +295,23 @@ const result = r =>
 const refresh = document.getElementById("refresh");
 refresh.hidden = location.protocol === "file:";
 refresh.addEventListener("click", () => { refresh.disabled = true; refresh.textContent = "Predicting..."; location.reload(); });
+
+// ---------- light / dark toggle: follows the system until the viewer picks one, the choice is remembered ----------
+const themeBtn = document.getElementById("theme");
+const currentTheme = () => document.documentElement.dataset.theme
+  || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+function showThemeButton() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  themeBtn.title = themeBtn.ariaLabel = `Switch to ${next} mode`;
+}
+themeBtn.addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) {}
+  showThemeButton();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", showThemeButton);
+showThemeButton();
 
 // ---------- hero: the newest hour is the current forecast ----------
 const latest = rows[rows.length - 1];
