@@ -83,10 +83,11 @@ The data splits naturally into historical data for training and current data for
 
 ## Setup and run
 **Requirements:** [Docker](https://www.docker.com/) with Docker Compose, and a free account on
-[hopsworks.ai](https://www.hopsworks.ai/) with **one project** (the client selects it automatically) and an API key.
+[hopsworks.ai](https://www.hopsworks.ai/) with a project and an API key. Everything runs in your own project: the
+pipelines create the feature group, feature view and model there, so start with the backfill and the training.
 
 ```bash
-cp .env.example .env                                         # then set HOPSWORKS_API_KEY
+cp .env.example .env                                         # then set HOPSWORKS_API_KEY and HOPSWORKS_PROJECT
 docker compose run --rm web feature_pipeline.py --backfill   # once: ~2 years of history into the feature store
 docker compose run --rm web training_pipeline.py             # train, evaluate, register the model
 docker compose up --build -d                                 # start the two services below
@@ -128,7 +129,10 @@ for reading and writing features. The image is built for `linux/amd64`, because 
   so there is no prediction history or monitoring beyond the last 7 days.
 - **Difficulties:**
   - `pip install hopsworks` alone is not enough, the `[python]` extra is needed (pyarrow).
-  - Login fails with "Could not find any project" until a project exists in the Hopsworks UI.
+  - Login fails with "Could not find any project" until a project exists in the Hopsworks UI. Without a project
+    name the client only picks the project automatically if the account has exactly one; with several it asks
+    interactively, which fails in the background services. That is why `HOPSWORKS_PROJECT` is set in `.env`
+    (the Hopsworks client reads it from the environment).
   - `get_batch_data(event_time=True)` returns the event time under a prefixed column name
     (`<project>_<feature group>_<version>_time`), so the inference script renames it.
   - Docker build on Apple Silicon failed at first: `hops-deltalake` only has wheels for macOS ARM and Linux x86_64,
