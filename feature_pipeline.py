@@ -17,9 +17,9 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-CITY, LAT, LON = "zurich", 47.37, 8.55
+from pipeline_config import CITY, FG_NAME, FG_VERSION, LAT, LON
+
 HOURLY = ["temperature_2m", "relative_humidity_2m", "cloud_cover", "pressure_msl", "precipitation"]
-FG_NAME, FG_VERSION = "weather_hourly", 1
 
 
 def fetch(backfill: bool) -> pd.DataFrame:

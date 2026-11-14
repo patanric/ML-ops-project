@@ -15,10 +15,8 @@ from dotenv import load_dotenv
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
-from feature_pipeline import FG_NAME, FG_VERSION
+from pipeline_config import FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, MODEL_NAME
 
-FV_NAME, FV_VERSION = "weather_rain_fv", 1
-MODEL_NAME = "rain_model"
 TRAIN_START, TEST_START = "2024-01-01", "2026-01-01"
 
 load_dotenv()

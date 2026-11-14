@@ -19,10 +19,8 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from feature_pipeline import FG_NAME, FG_VERSION, LAT, LON
+from pipeline_config import FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, LAT, LON, MODEL_NAME
 
-FV_NAME, FV_VERSION = "weather_rain_fv", 1  # created by training_pipeline.py
-MODEL_NAME = "rain_model"
 TEMPLATE = Path(__file__).with_name("predictions_template.html")
 OUTPUT = Path("output/predictions.html")
 

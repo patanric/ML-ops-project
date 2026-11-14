@@ -13,7 +13,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY feature_pipeline.py training_pipeline.py inference_pipeline.py serve.py predictions_template.html ./
+COPY pipeline_config.py feature_pipeline.py training_pipeline.py inference_pipeline.py serve.py predictions_template.html ./
 
 # the API key comes from `docker run --env-file .env`, never baked into the image
 ENTRYPOINT ["python"]
