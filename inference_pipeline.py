@@ -25,6 +25,10 @@ TEMPLATE = Path(__file__).with_name("predictions_template.html")
 OUTPUT = Path("output/predictions.html")
 
 
+class ForecastUnavailableError(RuntimeError):
+    """No fresh feature data is available for a current forecast."""
+
+
 def connect():
     """Log in, get feature view + feature group, download the best model (done once)."""
     project = hopsworks.login(api_key_value=os.environ["HOPSWORKS_API_KEY"])
@@ -53,7 +57,13 @@ def predict(fv, fg, model, clf) -> str:
     df = fv.get_batch_data(start_time=since, event_time=True)
     # event time comes back prefixed (<project>_<feature group>_<version>_time)
     df = df.rename(columns=lambda c: "time" if c.endswith("_time") else c)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
     df = df.sort_values("time").reset_index(drop=True)
+    if df.empty or df.iloc[-1]["time"] != pd.Timestamp.now(tz="UTC").floor("h"):
+        raise ForecastUnavailableError(
+            "Current forecast unavailable: no weather data for the current hour. "
+            "Please try again after the next hourly update."
+        )
     df.loc[df.index[-1], "cloud_cover"] = cloud_cover_now  # newest hour = current forecast, uses the live value
 
     # 3. Predict every hour
@@ -63,8 +73,7 @@ def predict(fv, fg, model, clf) -> str:
 
     # 4. Actual labels (filled in 2 hours later by the feature pipeline) to see how the model did
     labels = fg.select(["time", "rain_next_2h"]).filter(fg.time >= since).read()
-    for d in (df, labels):
-        d["time"] = pd.to_datetime(d["time"], utc=True)
+    labels["time"] = pd.to_datetime(labels["time"], utc=True)
     df = df.merge(labels, on="time", how="left")
 
     latest = df.iloc[-1]

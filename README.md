@@ -67,8 +67,9 @@ flowchart TB
 - **Features are computed once:** the aggregated features are engineered only in the feature pipeline. Training and
   inference both read them from the same feature view, so the inference does not reimplement the feature engineering,
   a common cause of training-serving skew (course slide decks 15 and 20). Only the RT feature is fetched at inference.
-- **Failures stay local:** if a feature pipeline run fails, the inference still works with the newest features already
-  in the store; if a training run fails, the best registered model keeps serving.
+- **Failures stay local:** inference uses stored features only while they belong to the current UTC hour. If a
+  feature update is delayed or fails, the web app reports that the forecast is unavailable instead of presenting
+  old data as current. If a training run fails, the best registered model keeps serving.
 - **Each pipeline can be changed or replaced on its own:** a different model, a streaming feature pipeline or another
   compute engine would not require changes in the other pipelines, as long as the names of the Hopsworks objects stay
   the same.
@@ -87,6 +88,11 @@ feature group, feature view and model.
 
 `serve.py` is a small web app around the same inference code (`connect()` once at start, `predict()` per page load).
 All timestamps are stored in UTC.
+
+Inference requires features from the current UTC hour before applying live `cloud_cover`. If those features are
+missing or outdated, the web app returns HTTP 503 with an unavailable message and CLI inference stops without
+generating a new page. This can happen briefly at the start of an hour while the scheduled feature update finishes.
+Previously exported HTML files are static snapshots and do not refresh automatically.
 
 ## Features
 | Feature | Type | Computed where | Used at inference |
@@ -138,6 +144,17 @@ The data splits naturally into historical data for training and current data for
     (`<project>_<feature group>_<version>_time`), so the inference script renames it.
   - Docker build on Apple Silicon failed at first: `hops-deltalake` only has wheels for macOS ARM and Linux x86_64,
     so the image is pinned to `linux/amd64`.
+
+## Known issues
+The following issue was reproduced in a local code review with synthetic data and remains unresolved:
+
+- **Missing hours can distort features and labels:** `fetch()` drops rows with missing values, while `engineer()`
+  calculates rolling windows and shifts by row count. If an hour is missing, the two-hour label can include rain
+  three hours ahead, and the humidity and pressure windows can span longer than intended. Hourly continuity is
+  not validated before these calculations.
+
+Resolved from the same review: stale or empty feature windows now produce an explicit unavailable response,
+as described under [Pipelines](#pipelines), instead of a misleading current forecast or an `IndexError`.
 
 ## Reflection: from batch scripts to a production-like setup
 **What I noticed.** After building the predictions page I saw that it only showed the current hour after running

@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
 
-from inference_pipeline import connect, predict
+from inference_pipeline import ForecastUnavailableError, connect, predict
 
 PORT = 8000
 
@@ -22,6 +22,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = predict(*CONTEXT).encode()
+        except ForecastUnavailableError as e:
+            self.send_error(503, explain=str(e))
+            return
         except Exception as e:  # show the error instead of a dropped connection
             self.send_error(500, explain=str(e))
             raise
