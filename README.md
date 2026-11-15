@@ -2,6 +2,35 @@
 MLOps Projektarbeit, CAS AI Operations (FHNW). Predicts whether it will rain in Zurich in the next 2 hours, built as
 three separate pipelines (feature, training, inference) around the Hopsworks feature store and model registry.
 
+## Setup and run
+**Requirements:** [Docker](https://www.docker.com/) with Docker Compose, and a free account on
+[hopsworks.ai](https://www.hopsworks.ai/) with a project and an API key. Everything runs in your own project: the
+pipelines create the feature group, feature view and model there, so start with the backfill and the training.
+
+```bash
+cp .env.example .env                                         # then set HOPSWORKS_API_KEY and HOPSWORKS_PROJECT
+docker compose run --rm web feature_pipeline.py --backfill   # once: ~2 years of history into the feature store
+docker compose run --rm web training_pipeline.py             # train, evaluate, register the model
+docker compose up --build -d                                 # start the two services below
+```
+Then open http://localhost:8000. `docker compose logs -f` follows both services, `docker compose down` stops them.
+
+| Service | What it does |
+|---|---|
+| `features` | Runs `feature_pipeline.py` immediately at start, then at minute 1 of every hour. Open-Meteo delivers hourly values and the pipeline keeps rows up to the current time, so a new hour is available right after the full hour; running more often would only rewrite the same hours. |
+| `web` | `serve.py`: logs in and loads the best model once, then every page load or click on "Refresh prediction" runs a fresh inference (live `cloud_cover` + newest features) and returns the predictions page. |
+
+Training stays a manual step. The web app keeps the model it loaded at start, so restart it
+(`docker compose restart web`) after training a better one.
+`docker compose run --rm web <script>` runs any script once, for example
+`docker compose run --rm web inference_pipeline.py` writes the predictions page as a static file to `output/predictions.html`.
+
+**Dependencies:** Python 3.12.14 (Hopsworks needs Python < 3.14), packages pinned in `requirements.txt`, both installed
+into the image by the `Dockerfile`. `hopsworks[python]` is needed instead of plain `hopsworks`, which lacks pyarrow
+for reading and writing features. The image is built for `linux/amd64`, because `hops-deltalake` (required by
+`hopsworks[python]`) has no Linux ARM wheel; on Apple Silicon Docker Desktop runs it under emulation, which works but is slower.
+
+## Assessment overview
 | Assessment criterion | Where to find it |
 |---|---|
 | FTI architecture, feature store used for the features | [Architecture](#architecture-fti) |
@@ -80,34 +109,6 @@ The data splits naturally into historical data for training and current data for
 - **Historical:** archive API (ERA5 reanalysis), 2024-01-01 until about 6 days ago, loaded once with `--backfill`
 - **Current:** forecast API, last 7 days up to the current hour, loaded by every regular feature pipeline run
 - **Live (RT):** forecast API `current=cloud_cover`, fetched by the inference at prediction time
-
-## Setup and run
-**Requirements:** [Docker](https://www.docker.com/) with Docker Compose, and a free account on
-[hopsworks.ai](https://www.hopsworks.ai/) with a project and an API key. Everything runs in your own project: the
-pipelines create the feature group, feature view and model there, so start with the backfill and the training.
-
-```bash
-cp .env.example .env                                         # then set HOPSWORKS_API_KEY and HOPSWORKS_PROJECT
-docker compose run --rm web feature_pipeline.py --backfill   # once: ~2 years of history into the feature store
-docker compose run --rm web training_pipeline.py             # train, evaluate, register the model
-docker compose up --build -d                                 # start the two services below
-```
-Then open http://localhost:8000. `docker compose logs -f` follows both services, `docker compose down` stops them.
-
-| Service | What it does |
-|---|---|
-| `features` | Runs `feature_pipeline.py` immediately at start, then at minute 1 of every hour. Open-Meteo delivers hourly values and the pipeline keeps rows up to the current time, so a new hour is available right after the full hour; running more often would only rewrite the same hours. |
-| `web` | `serve.py`: logs in and loads the best model once, then every page load or click on "Refresh prediction" runs a fresh inference (live `cloud_cover` + newest features) and returns the predictions page. |
-
-Training stays a manual step. The web app keeps the model it loaded at start, so restart it
-(`docker compose restart web`) after training a better one.
-`docker compose run --rm web <script>` runs any script once, for example
-`docker compose run --rm web inference_pipeline.py` writes the predictions page as a static file to `output/predictions.html`.
-
-**Dependencies:** Python 3.12.14 (Hopsworks needs Python < 3.14), packages pinned in `requirements.txt`, both installed
-into the image by the `Dockerfile`. `hopsworks[python]` is needed instead of plain `hopsworks`, which lacks pyarrow
-for reading and writing features. The image is built for `linux/amd64`, because `hops-deltalake` (required by
-`hopsworks[python]`) has no Linux ARM wheel; on Apple Silicon Docker Desktop runs it under emulation, which works but is slower.
 
 ## Limitations and difficulties
 - **Two data sources for one feature set:** the backfill uses the reanalysis archive (ERA5), recent hours come from the
