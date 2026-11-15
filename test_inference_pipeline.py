@@ -65,15 +65,22 @@ class ForecastFreshnessTests(unittest.TestCase):
         self.assertEqual(records[-1]["pred"], 1)
         self.assertIsNone(records[-1]["actual"])
 
-    def test_web_returns_503_when_forecast_is_unavailable(self):
-        handler = Mock(path="/")
+    def test_web_shows_loading_page_when_forecast_is_unavailable(self):
         error = pipeline.ForecastUnavailableError("Current forecast unavailable")
-        with patch.object(serve, "CONTEXT", (), create=True), \
-                patch.object(serve, "predict", side_effect=error):
-            serve.Handler.do_GET(handler)
-        handler.send_error.assert_called_once_with(503, explain=str(error))
-        handler.send_response.assert_not_called()
-        handler.wfile.write.assert_not_called()
+        for last_page, expected_start in (("", serve.EMPTY), ("<main>old forecast", "<main>")):
+            with self.subTest(last_page=last_page):
+                handler = Mock(path="/")
+                with patch.object(serve, "CONTEXT", (), create=True), \
+                        patch.object(serve, "LAST_PAGE", last_page), \
+                        patch.object(serve, "predict", side_effect=error):
+                    serve.Handler.do_GET(handler)
+                body = handler.wfile.write.call_args.args[0].decode()
+                handler.send_error.assert_not_called()
+                handler.send_response.assert_called_once_with(200)
+                handler.send_header.assert_any_call("Refresh", str(serve.RELOAD_S))
+                self.assertTrue(body.startswith(expected_start))
+                self.assertIn(serve.LOADING, body)
+                self.assertTrue(body.endswith(last_page.removeprefix("<main>")))
 
 
 if __name__ == "__main__":

@@ -78,8 +78,8 @@ feature view and inference can use them.
   inference both read them from the same feature view, so the inference does not reimplement the feature engineering,
   a common cause of training-serving skew (course slide decks 15 and 20). Only the RT feature is fetched at inference.
 - **Failures stay local:** inference uses stored features only while they belong to the current UTC hour. If a
-  feature update is delayed or fails, the web app reports that the forecast is unavailable instead of presenting
-  old data as current. If a training run fails, the best registered model keeps serving.
+  feature update is delayed or fails, the web app keeps showing the last page with a loading banner instead of
+  presenting old data as current. If a training run fails, the best registered model keeps serving.
 - **Each pipeline can be changed or replaced on its own:** a different model, a streaming feature pipeline or another
   compute engine would not require changes in the other pipelines, as long as the names of the Hopsworks objects stay
   the same.
@@ -100,8 +100,9 @@ feature groups, feature view and model.
 All timestamps are stored in UTC.
 
 Inference requires features from the current UTC hour before applying live `cloud_cover`. If those features are
-missing or outdated, the web app returns HTTP 503 with an unavailable message and CLI inference stops without
-generating a new page. This can happen briefly at the start of an hour while the scheduled feature update finishes.
+missing or outdated, the web app shows its last page (or an empty page right after start) with a loading banner
+and reloads it every 15 seconds until the features are there; CLI inference stops without generating a new page.
+This can happen briefly at the start of an hour while the scheduled feature update finishes.
 Previously exported HTML files are static snapshots and do not refresh automatically.
 
 ## Features
@@ -164,7 +165,7 @@ The following issue was reproduced in a local code review with synthetic data an
   three hours ahead, and the humidity and pressure windows can span longer than intended. Hourly continuity is
   not validated before these calculations.
 
-Resolved from the same review: stale or empty feature windows now produce an explicit unavailable response,
+Resolved from the same review: stale or empty feature windows now produce an explicit loading state,
 as described under [Pipelines](#pipelines), instead of a misleading current forecast or an `IndexError`.
 
 ## Reflection: from batch scripts to a production-like setup
