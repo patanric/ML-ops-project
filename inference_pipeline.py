@@ -19,7 +19,8 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from pipeline_config import FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, LAT, LON, MODEL_NAME
+from pipeline_config import (FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, LABEL_FG_NAME, LABEL_FG_VERSION, LAT, LON,
+                             MODEL_NAME)
 
 TEMPLATE = Path(__file__).with_name("predictions_template.html")
 OUTPUT = Path("output/predictions.html")
@@ -30,11 +31,11 @@ class ForecastUnavailableError(RuntimeError):
 
 
 def connect():
-    """Log in, get feature view + feature group, download the best model (done once)."""
+    """Log in, get feature view + label feature group, download the best model (done once)."""
     project = hopsworks.login(api_key_value=os.environ["HOPSWORKS_API_KEY"])
     fs = project.get_feature_store()
     fv = fs.get_feature_view(FV_NAME, version=FV_VERSION)
-    fg = fs.get_feature_group(FG_NAME, version=FG_VERSION)
+    fg = fs.get_feature_group(LABEL_FG_NAME, version=LABEL_FG_VERSION)
     # best model from the registry (Hopsworks counterpart to the MLflow "champion" alias)
     model = project.get_model_registry().get_best_model(MODEL_NAME, "f1", "max")
     clf = joblib.load(os.path.join(model.download(), "model.joblib"))
@@ -55,8 +56,10 @@ def predict(fv, fg, model, clf) -> str:
     # 2. Feature view, load the features of the last 7 days (precomputed aggregates)
     since = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
     df = fv.get_batch_data(start_time=since, event_time=True)
-    # event time comes back prefixed (<project>_<feature group>_<version>_time)
-    df = df.rename(columns=lambda c: "time" if c.endswith("_time") else c)
+    # event times come back prefixed (<project>_<feature group>_<version>_time), one per joined group:
+    # keep the weather one as "time", drop the label group's (it is not a feature)
+    df = df.rename(columns=lambda c: "time" if c.endswith(f"_{FG_NAME}_{FG_VERSION}_time") else c)
+    df = df.drop(columns=[c for c in df.columns if c.endswith("_time")])
     df["time"] = pd.to_datetime(df["time"], utc=True)
     df = df.sort_values("time").reset_index(drop=True)
     if df.empty or df.iloc[-1]["time"] != pd.Timestamp.now(tz="UTC").floor("h"):

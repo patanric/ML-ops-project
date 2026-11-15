@@ -7,6 +7,11 @@ import pandas as pd
 
 import inference_pipeline as pipeline
 import serve
+from pipeline_config import FG_NAME, FG_VERSION, LABEL_FG_NAME, LABEL_FG_VERSION
+
+# get_batch_data(event_time=True) returns one prefixed event time per joined feature group
+WEATHER_TIME = f"project_{FG_NAME}_{FG_VERSION}_time"
+LABEL_TIME = f"project_{LABEL_FG_NAME}_{LABEL_FG_VERSION}_time"
 
 
 class ForecastFreshnessTests(unittest.TestCase):
@@ -28,7 +33,7 @@ class ForecastFreshnessTests(unittest.TestCase):
                       [hour + pd.Timedelta(hours=1)], []):
             with self.subTest(times=times):
                 self.fv.get_batch_data.return_value = pd.DataFrame({
-                    "project_weather_1_time": times, "cloud_cover": [20.] * len(times),
+                    WEATHER_TIME: times, "cloud_cover": [20.] * len(times),
                 })
                 with self.assertRaisesRegex(pipeline.ForecastUnavailableError, "current hour"):
                     pipeline.predict(self.fv, self.fg, self.model, self.clf)
@@ -40,7 +45,8 @@ class ForecastFreshnessTests(unittest.TestCase):
         hour = self.now.floor("h")
         times = [hour - pd.Timedelta(hours=1), hour]
         self.fv.get_batch_data.return_value = pd.DataFrame({
-            "project_weather_1_time": [t.tz_localize(None) for t in reversed(times)],
+            WEATHER_TIME: [t.tz_localize(None) for t in reversed(times)],
+            LABEL_TIME: [None, times[0].tz_localize(None)],  # newest hour has no label row yet
             "cloud_cover": [30., 20.],
         })
         self.fg.select.return_value.filter.return_value.read.return_value = pd.DataFrame({
@@ -53,7 +59,7 @@ class ForecastFreshnessTests(unittest.TestCase):
 
         features = self.clf.predict.call_args.args[0]
         self.assertEqual(features["cloud_cover"].tolist(), [20., 99.])
-        self.assertNotIn("time", features.columns)
+        self.assertEqual(features.columns.tolist(), ["cloud_cover"])  # no event time of either group
         records = json.loads(html.split("const DATA = ")[1].split(";")[0])
         self.assertEqual(records[-1]["time"], "2026-11-15T12:00:00Z")
         self.assertEqual(records[-1]["pred"], 1)

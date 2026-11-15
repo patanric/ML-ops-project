@@ -1,4 +1,4 @@
-"""Training pipeline: feature group -> feature view -> training data -> model -> Hopsworks model registry.
+"""Training pipeline: feature groups -> feature view (join) -> training data -> model -> Hopsworks model registry.
 
 Model, metrics and parameters follow course exercises 07/10 (GradientBoosting, 4 metrics).
 Split is by time instead of random: neighbouring hours are almost identical, a random
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
-from pipeline_config import FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, MODEL_NAME
+from pipeline_config import FG_NAME, FG_VERSION, FV_NAME, FV_VERSION, LABEL_FG_NAME, LABEL_FG_VERSION, MODEL_NAME
 
 TRAIN_START, TEST_START = "2024-01-01", "2026-01-01"
 
@@ -23,16 +23,20 @@ load_dotenv()
 project = hopsworks.login(api_key_value=os.environ["HOPSWORKS_API_KEY"])
 fs = project.get_feature_store()
 
-# 1. Load feature group
-fg = fs.get_feature_group(FG_NAME, version=FG_VERSION)
+# 1. Load feature groups
+weather = fs.get_feature_group(FG_NAME, version=FG_VERSION)
+labels = fs.get_feature_group(LABEL_FG_NAME, version=LABEL_FG_VERSION)
 
-# 2. Feature view: all features + label, keys are not features
+# 2. Feature view: weather features joined with the label on the key city + time, keys are not features.
+#    Left join: the newest 2 hours have no label yet but their features are needed for inference.
 fv = fs.get_or_create_feature_view(
     name=FV_NAME,
     version=FV_VERSION,
-    query=fg.select_except(["city", "time"]),
+    query=weather.select_except(["city", "time"]).join(
+        labels.select(["rain_next_2h"]), on=["city", "time"], join_type="left"
+    ),
     labels=["rain_next_2h"],
-    description="Hourly weather features for predicting rain in the next 2 hours",
+    description="Hourly weather features joined with the rain_next_2h label on city + time",
 )
 
 # 3. Training data from the feature view, split by event time

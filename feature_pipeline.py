@@ -1,4 +1,6 @@
-"""Feature pipeline: Open-Meteo hourly weather -> features + label -> Hopsworks feature group.
+"""Feature pipeline: Open-Meteo hourly weather -> features + label -> two Hopsworks feature groups.
+
+Features go to weather_hourly, labels to rain_labels, both keyed by city + time.
 
 Target:     rain_next_2h  (1 if >= 0.1 mm precipitation in the next 2 hours)
 Aggregated: humidity_mean_24h, pressure_change_3h
@@ -17,7 +19,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from pipeline_config import CITY, FG_NAME, FG_VERSION, LAT, LON
+from pipeline_config import CITY, FG_NAME, FG_VERSION, LABEL_FG_NAME, LABEL_FG_VERSION, LAT, LON
 
 HOURLY = ["temperature_2m", "relative_humidity_2m", "cloud_cover", "pressure_msl", "precipitation"]
 
@@ -46,8 +48,8 @@ def engineer(df: pd.DataFrame) -> pd.DataFrame:
     df["humidity_mean_24h"] = df["relative_humidity_2m"].rolling(24, min_periods=24).mean()
     df["pressure_change_3h"] = df["pressure_msl"].diff(3)
     next_2h = df["precipitation"].shift(-1) + df["precipitation"].shift(-2)
-    # last 2h have no label yet: kept with <NA> so inference sees fresh features,
-    # the next run fills the label via upsert (primary key city + time)
+    # last 2h have no label yet (<NA>): their features are stored so inference sees fresh data,
+    # their label is written by a later run (see upload())
     df["rain_next_2h"] = (next_2h >= 0.1).astype("Int64").where(next_2h.notna())
     df = df.dropna(subset=["humidity_mean_24h", "pressure_change_3h"]).copy()  # 24h warm-up
     df.insert(0, "city", CITY)
@@ -55,18 +57,28 @@ def engineer(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def upload(df: pd.DataFrame) -> None:
-    """4.+5. Create feature group (primary key + event time) and insert."""
+    """4.+5. Create both feature groups (primary key + event time) and insert."""
     import hopsworks  # imported here so --dry-run works without Hopsworks
 
     project = hopsworks.login(api_key_value=os.environ["HOPSWORKS_API_KEY"])
-    fg = project.get_feature_store().get_or_create_feature_group(
+    fs = project.get_feature_store()
+    weather = fs.get_or_create_feature_group(
         name=FG_NAME,
         version=FG_VERSION,
         primary_key=["city", "time"],
         event_time="time",
-        description="Hourly Open-Meteo weather for Zurich with 24h/3h aggregates and rain_next_2h label",
+        description="Hourly Open-Meteo weather for Zurich with 24h/3h aggregates",
     )
-    fg.insert(df, write_options={"wait_for_job": True})
+    weather.insert(df.drop(columns=["rain_next_2h"]), write_options={"wait_for_job": True})
+    labels = fs.get_or_create_feature_group(
+        name=LABEL_FG_NAME,
+        version=LABEL_FG_VERSION,
+        primary_key=["city", "time"],
+        event_time="time",
+        description="rain_next_2h: 1 if >= 0.1 mm precipitation in the 2 hours after time",
+    )
+    # only known labels; the newest 2h are added by a later run once the rain has (not) fallen
+    labels.insert(df[["city", "time", "rain_next_2h"]].dropna(), write_options={"wait_for_job": True})
 
 
 if __name__ == "__main__":
