@@ -37,7 +37,10 @@ fv = fs.get_or_create_feature_view(
 
 # 3. Training data from the feature view, split by event time
 X_train, X_test, y_train, y_test = fv.train_test_split(
-    train_start=TRAIN_START, train_end=TEST_START, test_start=TEST_START
+    train_start=TRAIN_START,
+    train_end=TEST_START,
+    test_start=TEST_START,
+    description=f"Time split: train {TRAIN_START} to {TEST_START}, test from {TEST_START}",
 )
 # the newest 2 hours have no label yet (see feature_pipeline.py)
 test_mask = y_test["rain_next_2h"].notna()
