@@ -62,14 +62,7 @@ def upload(df: pd.DataFrame) -> None:
 
     project = hopsworks.login(api_key_value=os.environ["HOPSWORKS_API_KEY"])
     fs = project.get_feature_store()
-    weather = fs.get_or_create_feature_group(
-        name=FG_NAME,
-        version=FG_VERSION,
-        primary_key=["city", "time"],
-        event_time="time",
-        description="Hourly Open-Meteo weather for Zurich with 24h/3h aggregates",
-    )
-    weather.insert(df.drop(columns=["rain_next_2h"]), write_options={"wait_for_job": True})
+    # labels first: an inference running between the two inserts never sees new features without their label
     labels = fs.get_or_create_feature_group(
         name=LABEL_FG_NAME,
         version=LABEL_FG_VERSION,
@@ -79,6 +72,14 @@ def upload(df: pd.DataFrame) -> None:
     )
     # only known labels; the newest 2h are added by a later run once the rain has (not) fallen
     labels.insert(df[["city", "time", "rain_next_2h"]].dropna(), write_options={"wait_for_job": True})
+    weather = fs.get_or_create_feature_group(
+        name=FG_NAME,
+        version=FG_VERSION,
+        primary_key=["city", "time"],
+        event_time="time",
+        description="Hourly Open-Meteo weather for Zurich with 24h/3h aggregates",
+    )
+    weather.insert(df.drop(columns=["rain_next_2h"]), write_options={"wait_for_job": True})
 
 
 if __name__ == "__main__":
